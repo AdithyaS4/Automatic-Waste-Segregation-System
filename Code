@@ -1,0 +1,66 @@
+#include <Servo.h>
+
+Servo sorterServo;
+
+const int IR_SENSOR_PIN = 6;
+const int PROX_SENSOR_PIN = 3;
+const int SERVO_PIN = 11;
+
+const int PLASTIC_ANGLE = 90;    // Home position
+const int METAL_ANGLE = 0;       // Metal
+const int PAPER_ANGLE = 180;     // Paper / Non-metal
+
+// Time constants (in milliseconds)
+const unsigned long PROX_DELAY = 12000;   // 12 seconds (IR → Proximity)
+const unsigned long BIN_DELAY  = 34000;   // 42 seconds (IR → Bin)
+const unsigned long DUMP_TIME  = 10000;    // 5 seconds hold at bin
+
+void setup() {
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(PROX_SENSOR_PIN, INPUT);
+  sorterServo.attach(SERVO_PIN);
+  sorterServo.write(PLASTIC_ANGLE);
+  Serial.begin(9600);
+  Serial.println("IR + Proximity Conveyor Sorting (timed version)");
+}
+
+void loop() {
+  int irState = digitalRead(IR_SENSOR_PIN);
+  bool objectDetected = (irState == LOW);  // LOW = object detected
+
+  if (objectDetected) {
+    Serial.println("Object detected by IR sensor.");
+    unsigned long startTime = millis();
+    bool metalDetected = false;
+
+    // Wait until proximity detection time window
+    Serial.println("Waiting for 12s until proximity sensor zone...");
+    while (millis() - startTime < PROX_DELAY) {
+      delay(100); // Small delay to reduce CPU usage
+    }
+
+    // Check metal presence between 12s and 42s
+    Serial.println("Checking proximity sensor during object travel...");
+    while (millis() - startTime < BIN_DELAY) {
+      if (digitalRead(PROX_SENSOR_PIN) == LOW) { // NPN sensor active LOW
+        metalDetected = true;
+      }
+      delay(100);
+    }
+
+    // After 42s — object reaches the bin
+    if (metalDetected) {
+      Serial.println("Metal detected → Servo moves to 0° (metal bin)");
+      sorterServo.write(METAL_ANGLE);
+    } else {
+      Serial.println("Non-metal detected → Servo moves to 180° (paper/plastic bin)");
+      sorterServo.write(PAPER_ANGLE);
+    }
+
+    delay(DUMP_TIME); // hold while object falls into bin
+    sorterServo.write(PLASTIC_ANGLE);
+    Serial.println("Returned to 90° (home position).");
+  }
+
+  delay(200); // small delay before checking IR again
+}
